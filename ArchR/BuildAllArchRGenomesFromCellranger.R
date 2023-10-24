@@ -2,7 +2,7 @@
 #information and generates ArchR reference files for ATAC-seq analysis.
 
 #Use singularity /allen/programs/celltypes/workgroups/rnaseqanalysis/bicore/singularity/10x_multiome_qc_4.2.0.sif
-#You need to have UCSC tools directory or give full path for faToTwoBit
+#You need to have UCSC tools directory in path or give full path for faToTwoBit
 #write("TMP = '/home/matthew.schmitz/Matthew/tmp/'", file=file.path(Sys.getenv('R_USER'), '.Renviron'))
 #.libPaths(new = '/home/matthew.schmitz/R')
 .libPaths(new = '/home/matthew.schmitz/Matthew/utils/R')

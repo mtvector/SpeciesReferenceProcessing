@@ -1,2 +1,2 @@
 # SpeciesReferenceProcessing
-Scripts for building genomics references
+Scripts for building, comparing, and tinkering with genomics references
