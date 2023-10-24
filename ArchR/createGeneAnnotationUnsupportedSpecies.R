@@ -1,3 +1,4 @@
+#' This modification of the original ArchR function comes from Nelson Johansen
 #' Create a gene annotation object for ArchR
 #' 
 #' This function will create a gene annotation object that can be used for creating ArrowFiles or an ArchRProject, etc.
