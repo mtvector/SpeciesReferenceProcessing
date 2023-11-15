@@ -11,7 +11,8 @@ intermediate_path <- '~/Matthew/archr_genomes/'
 setwd(intermediate_path)
 #CSV of the genomes spreadsheet
 tab=read.csv2('~/Reference_Genome_tracking.csv',header = T,sep=',')
-tab=tab[file.exists(tab$CR6.ARC.2.0.reference.in.BICore.folder),]
+#tab=tab[file.exists(tab$CR6.ARC.2.0.reference.in.BICore.folder),]
+#tab=tab[3,]
 
 #English name
 en_val <- 'English.Name'
@@ -101,7 +102,7 @@ create_seed_file <- function(english_name,species_name,assembly_date,
 
 for (rn in rownames(tab)) {
   cur=tab[rn,]
-  archref_files <- list.files(path = cur[[dir_val]], pattern = "_ArchRef\\.RData")
+  archref_files <- c()#list.files(path = cur[[dir_val]], pattern = "_ArchRef\\.RData")
   
   # Check if any such files exist
   if (length(archref_files) > 0) {
@@ -125,22 +126,24 @@ for (rn in rownames(tab)) {
                    ref_path=cur[[dir_val]]
                    )
   print('making bsg')
-  package_path=smart_join('./',output_elements[2])
+  genome_package_path=smart_join('./',output_elements[2])
   
-  if (dir.exists(package_path) & output_elements[2]!="") {
-    print(paste("already exists so recurively deleting package_path", package_path))
-    unlink(package_path, recursive = TRUE)
+  if (dir.exists(genome_package_path) & output_elements[2]!="") {
+    print(paste("already exists so recurively deleting genome_package_path", genome_package_path))
+    unlink(genome_package_path, recursive = TRUE)
   }
   
-  bsg <- BSgenome::forgeBSgenomeDataPkg(output_elements[1])
+  BSgenome::forgeBSgenomeDataPkg(output_elements[1])
   print('load bsg')
   print(output_elements[2])
   tools:::.build_packages(output_elements[2])
-  print(package_path)
-  genome_package_env <- devtools::load_all(package_path)
-  description_file <- smart_join(package_path, 'DESCRIPTION')
-  package_info <- read.dcf(description_file)
-  genomeAnnotation <- createGenomeAnnotation(genome = genome_package_env$env[[output_elements[2]]])
+  print(genome_package_path)
+  genome_package_env <- devtools::load_all(genome_package_path)
+  genome_description_file <- smart_join(genome_package_path, 'DESCRIPTION')
+  genome_package_info <- read.dcf(genome_description_file)
+  bsg <- genome_package_env$env[[output_elements[2]]]
+  grange <- GenomicRanges::GRanges(seqnames = bsg@seqinfo@seqnames,ranges = bsg@seqinfo@seqlengths,seqinfo=bsg@seqinfo)
+  genomeAnnotation <- createGenomeAnnotation(genome = bsg,chromSizes = grange)
   
   print('gtf')
   txdb <- GenomicFeatures::makeTxDbFromGFF(file = smart_join(cur[[dir_val]],gtf_subpath), 
@@ -211,29 +214,39 @@ for (rn in rownames(tab)) {
   ## Using a custom version of createGeneAnnotation that takes a data.frame to map gene_id to hgnc_symbol
   httr::set_config(httr::config(ssl_verifypeer = FALSE))
   ensembl <- useMart("ensembl", dataset=paste0(parse_species_string(output_elements[2]),"_gene_ensembl")) ##listDatasets(ensembl)
-  mart.genes <- getBM(attributes=c("ensembl_gene_id", "entrezgene_id", "hgnc_symbol"), values=keys(txdb), mart=ensembl)
+  if('hgnc_symbol' %in% listAttributes(ensembl)$name){
+    mart.genes <- getBM(attributes=c("ensembl_gene_id", "entrezgene_id", "hgnc_symbol"), values=keys(txdb), mart=ensembl)
+  }
+  else{
+    mart.genes1 <- getBM(attributes=c("ensembl_gene_id", "entrezgene_id"), values=keys(txdb), mart=ensembl)
+    mart.genes2 <- getBM(attributes=c("ensembl_gene_id","hsapiens_homolog_associated_gene_name"), values=keys(txdb), mart=ensembl)
+    mart.genes <- merge(mart.genes1,mart.genes2)
+    colnames(mart.genes) <- gsub("hsapiens_homolog_associated_gene_name","hgnc_symbol", colnames(mart.genes))
+  }
   #Not sure when this would be helpful but leaving it just in case
   #seqlevels(txdb) <- paste0(c(seq(1,18), "X", "Y"))
   #seqlevels(txdb) <- paste0("chr", seqlevels(txdb))
   ## Using a custom version of createGeneAnnotation that takes a data.frame to map gene_id to hgnc_symbol
-  geneAnnotation <- createGeneAnnotationUnsupportedSpecies(genome = bsg,TxDb = txdb,
+  geneAnnotation <- createGeneAnnotationUnsupportedSpecies(genome = NULL,TxDb = txdb,#genome_package_info[1,'Package']
                                                            OrgDb = org_db,
                                                            mapping=mart.genes,
                                                            annoStyle = "MANUAL")  
   ## Remove genes without symbol
-  loci <- grep("NA", geneAnnotation$genes$symbol)
-  gid <- geneAnnotation$genes$gene_id[-loci]
+  geneAnnotation$genes$symbol <- str_replace(geneAnnotation$genes$symbol,'^NA_','')
+  geneAnnotation$exons$symbol <- str_replace(geneAnnotation$exons$symbol,'^NA_','')
+  loci <- grepl("^NA", geneAnnotation$genes$symbol)
+  gid <- geneAnnotation$genes$gene_id[!loci]
   df <- select(txdb, keys = gid, columns="TXNAME", keytype="GENEID")
   
-  genes <- geneAnnotation$genes[-loci]
-  exons <- geneAnnotation$exons[-grep("NA", geneAnnotation$exons$symbol)]
+  genes <- geneAnnotation$genes[!loci]
+  exons <- geneAnnotation$exons[!grepl("^NA", geneAnnotation$exons$symbol)]
   tss <- geneAnnotation$TSS[which(geneAnnotation$TSS$tx_name %in% df$TXNAME)]
   
   ## Finalize annotation
   geneAnnotationSubset <- createGeneAnnotation(genes = genes, 
                                                exons = exons, 
                                                TSS = tss)
-  
+  genomeAnnotation$genome <- 'nullGenome'
   save(genomeAnnotation, geneAnnotation, geneAnnotationSubset, 
        file = smart_join(cur[[dir_val]],paste0(output_elements[2],"_ArchRef.RData")))
   }
